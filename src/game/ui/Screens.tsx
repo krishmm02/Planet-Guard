@@ -370,7 +370,7 @@ export function HudBar({ hud, onNova }: { hud: Hud; onNova: () => void }) {
         </div>
 
         {/* Combo meter: the skill ceiling. */}
-        <div className={cn('glass flex min-w-[96px] flex-col items-center rounded-lg border px-3 py-1.5 transition-colors', hud.multiplier > 1 ? 'border-primary/70' : 'border-border')} data-testid="combo">
+        <div className={cn('glass flex min-w-[80px] flex-col items-center rounded-lg border px-2 py-1.5 sm:min-w-[96px] sm:px-3 transition-colors', hud.multiplier > 1 ? 'border-primary/70' : 'border-border')} data-testid="combo">
           <p className={cn('font-display font-bold leading-none tabular-nums transition-all', hud.multiplier > 1 ? 'text-3xl text-primary' : 'text-2xl text-muted-foreground')}>
             ×{hud.multiplier}
           </p>
@@ -380,7 +380,7 @@ export function HudBar({ hud, onNova }: { hud: Hud; onNova: () => void }) {
           <p className="mt-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">{hud.combo} chain</p>
         </div>
 
-        <div className="glass w-40 rounded-lg border border-border px-3 py-2 sm:w-56">
+        <div className="glass w-32 rounded-lg border border-border px-3 py-2 sm:w-56">
           <div className="flex justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
             <span>Earth</span><span>Wave {hud.wave}/{WAVE_COUNT}</span>
           </div>
