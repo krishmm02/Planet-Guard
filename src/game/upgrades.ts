@@ -13,7 +13,7 @@ export const UPGRADES: UpgradeDef[] = [
   { key: 'spread', label: 'Spread cannon', blurb: '+1 shot per volley', max: 3, base: 260 },
   { key: 'damage', label: 'Heavy rounds', blurb: '+1 damage per shot', max: 4, base: 220 },
   { key: 'shield', label: 'Shield capacity', blurb: '+25 shield', max: 4, base: 150 },
-  { key: 'turn', label: 'Thrusters', blurb: '+30% orbit speed', max: 3, base: 110 },
+  { key: 'pierce', label: 'Piercing rounds', blurb: 'Shots pass through +1 rock', max: 2, base: 320 },
   { key: 'nova', label: 'Nova capacitor', blurb: '−20% Nova cooldown', max: 3, base: 240 },
 ]
 

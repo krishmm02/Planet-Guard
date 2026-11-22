@@ -8,16 +8,17 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Volume2, VolumeX } from 'lucide-react'
-import { GameEngine, NO_UPGRADES, type Hud, type Upgrades } from '../../game/engine'
+import { GameEngine, NO_UPGRADES, type Hud, type RunStats, type Upgrades } from '../../game/engine'
 import { Sfx } from '../../game/sfx'
 import type { Asteroid, DailySky } from '../../game/sky'
 import { REPAIR } from '../../game/upgrades'
-import { BriefingScreen, HudBar, TitleScreen } from '../../game/ui/Screens'
+import { BriefingScreen, HudBar, LogbookModal, TitleScreen } from '../../game/ui/Screens'
+import { emptyLogbook, loadLogbook, recordRun, type Logbook, type RunReport } from '../../game/logbook'
 import { GameOver } from '../../game/ui/GameOver'
 
 type Phase = 'title' | 'briefing' | 'playing' | 'over'
 
-const EMPTY_HUD: Hud = { score: 0, credits: 0, wave: 1, earthHp: 100, shield: 50, shieldMax: 50, nova: 1, event: null, kills: 0 }
+const EMPTY_HUD: Hud = { score: 0, credits: 0, wave: 1, earthHp: 100, shield: 50, shieldMax: 50, nova: 1, event: null, kills: 0, combo: 0, multiplier: 1, maxCombo: 0, powers: {} }
 
 function readVoicePref(): boolean {
   try {
@@ -41,11 +42,20 @@ export default function PlayPage() {
   const [upgrades, setUpgrades] = useState<Upgrades>(NO_UPGRADES)
   const [won, setWon] = useState(false)
   const [runToken, setRunToken] = useState<string | null>(null)
-  const [realKills, setRealKills] = useState<Array<{ a: Asteroid; points: number }>>([])
+  const [realKills, setRealKills] = useState<Array<{ a: Asteroid; points: number; boss: boolean }>>([])
   const [sound, setSound] = useState(true)
+  const [book, setBook] = useState<Logbook>(emptyLogbook)
+  const [showLog, setShowLog] = useState(false)
+  const [lastPerfect, setLastPerfect] = useState(false)
+  const [stats, setStats] = useState<RunStats | null>(null)
+  const [report, setReport] = useState<RunReport | null>(null)
+  // The engine reports kills synchronously; keep a ref so game-over sees them all.
+  const killsRef = useRef<Array<{ a: Asteroid; points: number; boss: boolean }>>([])
+  const hudRef = useRef<Hud>(EMPTY_HUD)
 
   useEffect(() => {
     setSound(readVoicePref())
+    setBook(loadLogbook())
     fetch('/api/sky')
       .then((r) => (r.ok ? (r.json() as Promise<DailySky>) : Promise.reject(new Error(String(r.status)))))
       .then((s: DailySky) => setSky(s))
@@ -81,16 +91,34 @@ export default function PlayPage() {
     engineRef.current?.destroy()
     if (!canvasRef.current) return null
     const engine = new GameEngine(canvasRef.current, s, {
-      onHud: setHud,
-      onWaveCleared: (i) => {
+      onHud: (h) => {
+        hudRef.current = h
+        setHud(h)
+      },
+      onWaveCleared: (i, perfect) => {
+        setLastPerfect(perfect)
         setWave(i + 1)
         setPhase('briefing')
       },
-      onGameOver: (didWin) => {
+      onGameOver: (didWin, runStats) => {
         setWon(didWin)
+        setStats(runStats)
+        // Fold the run into the logbook (localStorage) and show what changed.
+        const r = recordRun({
+          score: hudRef.current.score,
+          won: didWin,
+          kills: runStats.kills,
+          maxCombo: runStats.maxCombo,
+          realKills: killsRef.current.map(({ a, boss }) => ({ a, boss })),
+        })
+        setReport(r)
+        setBook(r.book)
         setPhase('over')
       },
-      onRealKill: (a, points) => setRealKills((k) => [...k, { a, points }]),
+      onRealKill: (a, points, boss) => {
+        killsRef.current = [...killsRef.current, { a, points, boss }]
+        setRealKills(killsRef.current)
+      },
     }, sfxRef.current)
     engineRef.current = engine
     // Dev builds expose the engine for the e2e balance test (autopilot, fast-forward).
@@ -127,6 +155,11 @@ export default function PlayPage() {
     createEngine(sky)
     setUpgrades(NO_UPGRADES)
     setRealKills([])
+    killsRef.current = []
+    hudRef.current = EMPTY_HUD
+    setStats(null)
+    setReport(null)
+    setLastPerfect(false)
     setHud(EMPTY_HUD)
     setWave(0)
     setRunToken(null)
@@ -169,7 +202,7 @@ export default function PlayPage() {
             <p className="text-muted-foreground">Couldn't reach mission control. Refresh to try again.</p>
           </div>
         ) : (
-          <TitleScreen sky={sky} onLaunch={launchRun} />
+          <TitleScreen sky={sky} book={book} onLaunch={launchRun} onOpenLog={() => setShowLog(true)} />
         )
       )}
       {phase === 'briefing' && sky && (
@@ -178,6 +211,8 @@ export default function PlayPage() {
           waveIndex={wave}
           hud={hud}
           upgrades={upgrades}
+          book={book}
+          lastPerfect={lastPerfect}
           onBuy={buy}
           onRepair={repair}
           onLaunch={launchWave}
@@ -186,8 +221,9 @@ export default function PlayPage() {
       )}
       {phase === 'playing' && <HudBar hud={hud} onNova={() => engineRef.current?.nova()} />}
       {phase === 'over' && sky && (
-        <GameOver sky={sky} won={won} hud={hud} runToken={runToken} realKills={realKills} onAgain={launchRun} />
+        <GameOver sky={sky} won={won} hud={hud} runToken={runToken} realKills={realKills} report={report} stats={stats} onAgain={launchRun} />
       )}
+      {showLog && <LogbookModal book={book} onClose={() => setShowLog(false)} />}
 
       <button
         type="button"

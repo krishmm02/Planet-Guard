@@ -13,6 +13,15 @@ You can play within a second, with no sign-up. A run is 8 waves, roughly 5–8 m
 5. **Wave 8**: the boss, which keeps spawning debris until it's destroyed.
 6. **Game over**: score, the real asteroids you stopped, and the leaderboard. Signing in posts your score; playing never required it.
 
+## What keeps people playing
+
+- **Snappy aiming, varied threats.** The ship snaps to your pointer, bullets are fast, and there's a muzzle flash, hit sparks and a short freeze-frame on big kills. Because aiming is easy, difficulty comes from *what* you aim at: splitters (break into three), armored rocks (5 hits), fast comets with tails, two-sided debris clusters, and real space weather.
+- **Combo multiplier up to ×8.** Every 5 chained kills raise the multiplier, and anything touching Earth resets it. A wave with no hits doubles the clear bonus. This is the skill ceiling: in testing, a run that just survived scored about 7.6k while a high-combo run scored about 71–81k on the same sky.
+- **Power-up capsules** (Overdrive, Time Freeze, Shield Surge) drift *away* from Earth after big kills, so you have to choose between the chain and the pickup.
+- **Pilot Logbook.** Every real NASA asteroid you destroy is collected permanently, so each day's new sky is a fresh set to hunt ("Today's real asteroids: 7/15"). XP mostly comes from collecting, and feeds an 8-rank ladder (Cadet → Planet Guardian). There's a daily streak, and "NEW" badges mark asteroids you haven't logged yet.
+
+**Tradeoff:** the logbook lives in `localStorage`. That keeps play anonymous and instant with no database, but it doesn't follow you across devices. Syncing it to a per-user DeepSpace record for signed-in players is the obvious next step.
+
 ## DeepSpace integrations and primitives
 
 | Used | For | Why it belongs |
@@ -54,9 +63,10 @@ So I chose **plausibility checking instead of authority**:
 
 ## How I verified it
 
-- **Unit tests** (`npx vitest run`, 12 passing): NASA parsing (including the `api_key` leak and non-JPL links), flare/CME intensity, campaign planning (escalating sizes, hazardous boss, quiet-Sun and tiny-feed fallbacks), score plausibility, and run tokens (tampering, forged start times, wrong key, missing secret).
+- **Unit tests** (`npx vitest run`, 19 passing; this includes the combo multiplier, rank thresholds, streaks across UTC days, logbook de-duplication and corrupt-storage recovery): NASA parsing (including the `api_key` leak and non-JPL links), flare/CME intensity, campaign planning (escalating sizes, hazardous boss, quiet-Sun and tiny-feed fallbacks), score plausibility, and run tokens (tampering, forged start times, wrong key, missing secret).
 - **E2E** (`npx deepspace test run e2e --grep "Planet Guard"`): routes are cached and locked down; a full run is playable without signing in; and a **balance test** plays complete runs with a dev-only autopilot that aims with human-like reaction delay and error.
 - **Balance was measured, not guessed.** The first build was far too easy: the bot finished with Earth at 100% and took zero hits in the boss wave. Instrumenting impacts showed the shield absorbed every hit (42 impacts by wave 7, no HP lost). After rebalancing (stronger impacts, slower shield regen, slower base turning, clustered two-sided debris, a tighter economy), the run with no upgrades loses Earth in the late waves (wave 7–8 across runs), while the run that buys upgrades clears the sky. The shop became the deciding factor. One caveat: the upgraded bot still finishes at or near full health, so a strong human player may find the late game easy. That is the first thing I would tune with real players.
+- **Combo/XP tuning was measured too.** After combos landed, one autopilot run jumped from Cadet to Commander in a single game, so I made XP depend on collecting real asteroids (a daily habit) more than on raw score. A strong first run now reaches Lieutenant.
 - **Daily rollover** was exercised live: the session crossed midnight UTC and the next load built a new sky (new objects, new briefings, a 2 km boss).
 
 ## What I'd do next

@@ -91,7 +91,7 @@ describe('score validation', () => {
   })
 
   it('rejects impossible pace, out-of-range values, and other days', () => {
-    expect(checkScore({ score: 50000, wave: 3 }, claims(60), now).ok).toBe(false) // too many points per second
+    expect(checkScore({ score: 90000, wave: 3 }, claims(60), now).ok).toBe(false) // too many points per second
     expect(checkScore({ score: 100, wave: 8 }, claims(30), now).ok).toBe(false) // waves too fast
     expect(checkScore({ score: MAX_RUN_SCORE + 1, wave: 8 }, claims(3 * 3600 - 1), now).ok).toBe(false)
     expect(checkScore({ score: -5, wave: 1 }, claims(60), now).ok).toBe(false)

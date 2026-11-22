@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { AuthOverlay, getAuthToken, useAuth } from 'deepspace'
-import { Check, Loader2, RotateCcw, Trophy } from 'lucide-react'
+import { Award, BookOpen, Check, Loader2, RotateCcw, Trophy } from 'lucide-react'
 import type { Asteroid, DailySky } from '../sky'
-import type { Hud } from '../engine'
+import type { Hud, RunStats } from '../engine'
+import type { RunReport } from '../logbook'
 import { Leaderboard } from './Leaderboard'
 import { cn } from '@/lib/utils'
 
@@ -28,6 +29,8 @@ export function GameOver({
   hud,
   runToken,
   realKills,
+  report,
+  stats,
   onAgain,
 }: {
   sky: DailySky
@@ -35,6 +38,8 @@ export function GameOver({
   hud: Hud
   runToken: string | null
   realKills: Array<{ a: Asteroid; points: number }>
+  report: RunReport | null
+  stats: RunStats | null
   onAgain: () => void
 }) {
   const { isSignedIn, isLoaded } = useAuth()
@@ -64,6 +69,40 @@ export function GameOver({
           <p className="text-sm text-muted-foreground">
             reached wave {hud.wave} · {hud.kills} rocks destroyed · Earth at {Math.round(hud.earthHp)}%
           </p>
+
+          {stats && (
+            <div className="mt-4 grid grid-cols-4 gap-2 text-center" data-testid="run-stats">
+              {[
+                { v: `×${Math.min(8, 1 + Math.floor(stats.maxCombo / 5))}`, l: `best combo (${stats.maxCombo})` },
+                { v: stats.perfectWaves, l: 'perfect waves' },
+                { v: stats.comets, l: 'comets caught' },
+                { v: stats.powerups, l: 'power-ups' },
+              ].map((s) => (
+                <div key={s.l} className="rounded-lg border border-border bg-secondary/40 p-2">
+                  <p className="font-display text-xl font-bold">{s.v}</p>
+                  <p className="text-[10px] leading-tight text-muted-foreground">{s.l}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {report && (
+            <div className="mt-3 rounded-lg border border-primary/40 bg-primary/10 p-3 text-sm" data-testid="run-report">
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-semibold text-primary">+{report.xpGained} XP</span>
+                {report.rankedUp && <span className="inline-flex items-center gap-1 font-semibold"><Award className="h-4 w-4 text-primary" /> Promoted to {report.rankedUp}!</span>}
+                {report.newBest && <span className="font-semibold text-emerald-400">New personal best</span>}
+              </p>
+              {report.newEntries.length > 0 ? (
+                <p className="mt-1 text-foreground/90">
+                  <BookOpen className="mr-1 inline h-4 w-4 text-shield" />
+                  {report.newEntries.length} new {report.newEntries.length === 1 ? 'asteroid' : 'asteroids'} in your logbook ({Object.keys(report.book.collected).length} total).
+                </p>
+              ) : (
+                <p className="mt-1 text-muted-foreground">No new asteroids logged this run. Tomorrow&rsquo;s sky brings new ones.</p>
+              )}
+            </div>
+          )}
           <p className="mt-4 text-[15px] leading-relaxed text-foreground/90">“{won ? sky.victory : sky.defeat}”</p>
 
           <div className="mt-5 rounded-lg border border-border bg-secondary/40 p-3">

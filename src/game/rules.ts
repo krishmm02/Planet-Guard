@@ -6,6 +6,9 @@ import { WAVE_COUNT } from './sky'
 
 export const SCORE = {
   debris: 10,
+  splitter: 25,
+  armored: 40,
+  comet: 60,
   /** Named real asteroid: half a point per meter of diameter, clamped. */
   real: (diameterM: number) => Math.max(50, Math.min(800, Math.round(diameterM / 2))),
   boss: 3000,
@@ -13,17 +16,26 @@ export const SCORE = {
   victory: (earthHp: number) => 2000 + Math.round(earthHp) * 20,
 }
 
-/** Upper bound on a full perfect run, with generous headroom for split fragments. */
+/** Highest combo multiplier (see multiplierFor in engine.ts). */
+export const MAX_MULTIPLIER = 8
+
+/**
+ * Upper bound on a run. Every kill could in principle land at the max
+ * multiplier, perfect waves double the clear bonus, and the boss keeps
+ * spawning debris, so this is deliberately generous: it exists to reject
+ * absurd numbers, not to judge good players.
+ */
 export const MAX_RUN_SCORE = (() => {
-  let total = SCORE.boss + SCORE.victory(100)
+  let kills = SCORE.boss
+  let flat = SCORE.victory(100)
   for (let w = 0; w < WAVE_COUNT; w++) {
-    total += SCORE.waveClear(w) + (20 + 6 * w) * SCORE.debris * 2 + 2 * 800
+    kills += (20 + 6 * w) * SCORE.armored + 2 * 800 + (1 + Math.floor(w / 2)) * SCORE.comet
+    flat += SCORE.waveClear(w) * 2
   }
-  // x1.5: the boss keeps spawning debris, so a long boss fight legitimately earns more.
-  return Math.round(total * 1.5)
+  return Math.round((kills * MAX_MULTIPLIER + flat) * 1.5)
 })()
 
 /** Fastest plausible pace: a wave can't be cleared faster than this. */
 export const MIN_SECONDS_PER_WAVE = 15
-/** Generous points-per-second ceiling for the time-based cap. */
-export const MAX_POINTS_PER_SECOND = 150
+/** Points-per-second ceiling for the time-based cap (multiplier-aware). */
+export const MAX_POINTS_PER_SECOND = 1000
