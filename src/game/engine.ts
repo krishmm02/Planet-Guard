@@ -32,7 +32,7 @@ export interface Hud {
   shield: number
   shieldMax: number
   nova: number // 0..1 charge
-  event: string | null
+  event: { kind: 'flare' | 'cme'; label: string } | null
   kills: number
 }
 
@@ -51,9 +51,9 @@ interface Rock {
   real?: Asteroid; boss?: boolean; spawnTimer?: number
 }
 interface Bullet { x: number; y: number; vx: number; vy: number; life: number; dmg: number }
-interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number }
+interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; streak?: boolean }
 interface FloatText { x: number; y: number; text: string; life: number; color: string }
-interface Spawn { t: number; kind: 'debris' | 'real' | 'boss'; asteroid?: Asteroid }
+interface Spawn { t: number; kind: 'debris' | 'real' | 'boss'; asteroid?: Asteroid; side?: number }
 
 const TAU = Math.PI * 2
 const EARTH_MAX = 100
@@ -120,6 +120,13 @@ export class GameEngine {
 
   private byId: Map<string, Asteroid>
 
+  /** Dev/test only: aims at the most threatening rock (used by e2e + balance checks). */
+  autopilot = false
+  /** Smoothed frames per second (diagnostics). */
+  fps = 60
+  /** Dev/test only: simulation substeps per frame (fast-forward without tunnelling). */
+  timeScale = 1
+
   constructor(
     private canvas: HTMLCanvasElement,
     private sky: DailySky,
@@ -154,9 +161,19 @@ export class GameEngine {
     const plan = this.sky.waves[index]
     const isBoss = index === WAVE_COUNT - 1
     const duration = 26 + index * 3
-    const debris = 10 + index * 4 + (isBoss ? 6 : 0)
+    const debris = 12 + index * 6 + (isBoss ? 8 : 0)
     const spawns: Spawn[] = []
-    for (let i = 0; i < debris; i++) spawns.push({ t: 1.2 + (i / debris) * duration + rand(-0.4, 0.4), kind: 'debris' })
+    // From wave 3, debris arrives in clusters from one side so you have to swing around.
+    const cluster = index >= 2 ? 3 : 1
+    for (let i = 0; i < debris; i += cluster) {
+      const t = 1.2 + (i / debris) * duration + rand(-0.4, 0.4)
+      const side = rand(0, TAU)
+      // From wave 4 every other cluster lands on the opposite side at the same moment.
+      const twoFront = index >= 3 && (i / cluster) % 2 === 1
+      for (let k = 0; k < cluster && i + k < debris; k++) {
+        spawns.push({ t: t + k * 0.18, kind: 'debris', side: twoFront && k % 2 ? side + Math.PI : side })
+      }
+    }
     plan?.headliners.forEach((id, i) => {
       const a = this.byId.get(id)
       if (a) spawns.push({ t: duration * (0.25 + i * 0.35), kind: 'real', asteroid: a })
@@ -300,7 +317,8 @@ export class GameEngine {
     if (!this.running) return
     const dt = Math.min(0.05, (now - this.last) / 1000)
     this.last = now
-    this.update(dt)
+    if (dt > 0) this.fps = this.fps * 0.95 + (1 / dt) * 0.05
+    for (let i = 0; i < this.timeScale && this.running; i++) this.update(dt)
     this.draw()
     this.raf = requestAnimationFrame(this.frame)
   }
@@ -318,9 +336,10 @@ export class GameEngine {
 
     // aim
     const flare = this.activeEvent?.kind === 'flare'
-    const turn = 5.5 * (1 + this.upgrades.turn * 0.3) * (flare ? 0.55 : 1)
+    const turn = 3.8 * (1 + this.upgrades.turn * 0.3) * (flare ? 0.55 : 1)
     const dir = (this.keys.has('d') || this.keys.has('arrowright') ? 1 : 0) - (this.keys.has('a') || this.keys.has('arrowleft') ? 1 : 0)
     if (dir) this.targetAngle = this.angle + dir * 0.6
+    if (this.autopilot) this.autoAim(cx, cy)
     const diff = angleDiff(this.angle, this.targetAngle)
     this.angle += Math.sign(diff) * Math.min(Math.abs(diff), turn * dt)
 
@@ -355,8 +374,8 @@ export class GameEngine {
       if (r.boss && r.spawnTimer !== undefined) {
         r.spawnTimer -= dt
         if (r.spawnTimer <= 0) {
-          r.spawnTimer = 2.2
-          this.spawnDebrisAt(r.x, r.y, 2)
+          r.spawnTimer = 1.3
+          this.spawnDebrisAt(r.x, r.y, 3)
         }
       }
     }
@@ -381,7 +400,7 @@ export class GameEngine {
       if (r.hp <= 0) continue
       if (Math.hypot(r.x - cx, r.y - cy) < hitR + r.r * 0.6) {
         r.hp = 0
-        const dmg = r.boss ? 70 : r.real ? 8 + r.r * 0.4 : 4
+        const dmg = r.boss ? 70 : r.real ? 14 + r.r * 0.6 : 6
         this.hitEarth(dmg, r.x, r.y)
       }
     }
@@ -393,11 +412,15 @@ export class GameEngine {
     for (const p of this.particles) {
       p.x += p.vx * dt
       p.y += p.vy * dt
-      p.vx *= 0.97
-      p.vy *= 0.97
+      if (!p.streak) {
+        p.vx *= 0.97
+        p.vy *= 0.97
+      }
       p.life -= dt
     }
     this.particles = this.particles.filter((p) => p.life > 0)
+    // Bound the particle budget so a big Nova + explosions can't spike frame time.
+    if (this.particles.length > 700) this.particles.splice(0, this.particles.length - 700)
     for (const t of this.texts) {
       t.y -= 30 * dt
       t.life -= dt
@@ -417,7 +440,7 @@ export class GameEngine {
 
     while (this.spawns.length && this.spawns[0].t <= this.waveTime) {
       const s = this.spawns.shift()!
-      if (s.kind === 'debris') this.spawnDebris()
+      if (s.kind === 'debris') this.spawnDebris(s.side)
       else if (s.kind === 'real' && s.asteroid) this.spawnReal(s.asteroid)
       else if (s.kind === 'boss') this.spawnBoss(s.asteroid)
     }
@@ -440,25 +463,28 @@ export class GameEngine {
       if (this.activeEvent.kind === 'flare' && Math.random() < dt * (1.2 + this.activeEvent.intensity * 2)) {
         this.flash = 0.35 + this.activeEvent.intensity * 0.45
       }
-      if (this.activeEvent.kind === 'cme' && Math.random() < dt * 40) {
+      if (this.activeEvent.kind === 'cme') {
         const len = Math.hypot(this.wind.x, this.wind.y)
         const nx = this.wind.x / len
         const ny = this.wind.y / len
-        const off = rand(-1, 1) * Math.max(this.w, this.h)
-        this.particles.push({ x: cx - nx * this.w + -ny * off, y: cy - ny * this.h + nx * off, vx: nx * 900, vy: ny * 900, life: 1.4, max: 1.4, color: '#e879f9', size: 1.5 })
+        const R = Math.max(this.w, this.h) * 0.75
+        for (let i = 0; i < 3; i++) {
+          const off = rand(-1, 1) * R
+          this.particles.push({ x: cx - nx * R - ny * off, y: cy - ny * R + nx * off, vx: nx * rand(700, 1100), vy: ny * rand(700, 1100), life: 1.6, max: 1.6, color: 'rgba(232,121,249,0.8)', size: 2, streak: true })
+        }
       }
       if (this.eventLeft <= 0) this.activeEvent = null
     }
 
     // shield regen (a flare knocks it out)
     this.sinceHit += dt
-    if (this.sinceHit > 2 && this.activeEvent?.kind !== 'flare') this.shield = Math.min(this.shieldMax, this.shield + 7 * dt)
+    if (this.sinceHit > 3 && this.activeEvent?.kind !== 'flare') this.shield = Math.min(this.shieldMax, this.shield + 3 * dt)
 
     // firing
     this.fireCd -= dt
     if (this.fireCd <= 0) {
-      this.fireCd = 0.17 * Math.pow(0.84, this.upgrades.fireRate)
-      const shots = [1, 2, 3, 4, 5][this.upgrades.spread] ?? 1
+      this.fireCd = 0.17 * Math.pow(0.88, this.upgrades.fireRate)
+      const shots = [1, 2, 3, 4][this.upgrades.spread] ?? 1
       const sx = cx + Math.cos(this.angle) * this.orbitR
       const sy = cy + Math.sin(this.angle) * this.orbitR
       for (let i = 0; i < shots; i++) {
@@ -496,10 +522,29 @@ export class GameEngine {
     }
   }
 
+  private aimTimer = 0
+  private autoAim(cx: number, cy: number): void {
+    // Retarget ~3x/second with some error, like a person, not an aimbot.
+    this.aimTimer -= 1 / 60
+    if (this.aimTimer > 0) return
+    this.aimTimer = 0.3
+    let best: Rock | null = null
+    let bestD = Infinity
+    for (const r of this.rocks) {
+      const d = Math.hypot(r.x - cx, r.y - cy) - (r.real ? 60 : 0)
+      if (d < bestD && d < Math.hypot(this.w, this.h) / 2) {
+        bestD = d
+        best = r
+      }
+    }
+    if (best) this.targetAngle = Math.atan2(best.y - cy, best.x - cx) + rand(-0.12, 0.12)
+    if (this.novaCd <= 0 && this.rocks.filter((r) => Math.hypot(r.x - cx, r.y - cy) < 200).length >= 4) this.nova()
+  }
+
   // ─── spawning ────────────────────────────────────────────────────────────
 
-  private edgePoint(): { x: number; y: number; a: number } {
-    const a = rand(0, TAU)
+  private edgePoint(side?: number): { x: number; y: number; a: number } {
+    const a = side === undefined ? rand(0, TAU) : side + rand(-0.25, 0.25)
     const R = Math.hypot(this.w, this.h) / 2 + 30
     return { x: this.w / 2 + Math.cos(a) * R, y: this.h / 2 + Math.sin(a) * R, a }
   }
@@ -509,11 +554,11 @@ export class GameEngine {
     return { vx: Math.cos(a) * speed, vy: Math.sin(a) * speed }
   }
 
-  private spawnDebris(): void {
-    const p = this.edgePoint()
+  private spawnDebris(side?: number): void {
+    const p = this.edgePoint(side)
     const w = this.waveIndex
     const tough = w >= 4 && Math.random() < 0.25
-    const v = this.aimAtEarth(p.x, p.y, 42 + w * 4 + rand(0, 28))
+    const v = this.aimAtEarth(p.x, p.y, 48 + w * 9 + rand(0, 30))
     this.rocks.push({ x: p.x, y: p.y, ...v, r: tough ? rand(9, 12) : rand(5, 9), hp: tough ? 3 : 1, maxHp: tough ? 3 : 1, points: SCORE.debris * (tough ? 2 : 1), shape: makeShape(8), rot: 0, spin: rand(-2, 2), flash: 0 })
   }
 
@@ -536,7 +581,7 @@ export class GameEngine {
 
   private spawnBoss(a?: Asteroid): void {
     const p = this.edgePoint()
-    const hp = 160
+    const hp = 380
     const v = this.aimAtEarth(p.x, p.y, 15, 0)
     this.rocks.push({ x: p.x, y: p.y, ...v, r: 58, hp, maxHp: hp, points: SCORE.boss, shape: makeShape(18), rot: 0, spin: 0.25, flash: 0, real: a, boss: true, spawnTimer: 3 })
     this.texts.push({ x: this.w / 2, y: 70, text: a ? `BOSS: ${a.name}` : 'BOSS INBOUND', life: 3, color: '#f87171' })
@@ -553,7 +598,7 @@ export class GameEngine {
     if (r.hp > 0) return
     this.kills++
     this.score += r.points
-    this.credits += r.points
+    this.credits += Math.round(r.points * 0.6)
     const big = !!r.real || r.r > 12
     this.boom(r.x, r.y, r.boss ? '#f87171' : r.real ? '#fbbf24' : '#d6d3d1', big ? 40 : 10, big ? 1.4 : 0.8)
     this.sfx.explode(big)
@@ -591,7 +636,7 @@ export class GameEngine {
       shield: this.shield,
       shieldMax: this.shieldMax,
       nova: this.novaCd <= 0 ? 1 : 1 - this.novaCd / (18 * Math.pow(0.8, this.upgrades.nova)),
-      event: this.activeEvent?.label ?? null,
+      event: this.activeEvent ? { kind: this.activeEvent.kind, label: this.activeEvent.label } : null,
       kills: this.kills,
     })
   }
@@ -642,8 +687,17 @@ export class GameEngine {
     // particles
     for (const p of this.particles) {
       ctx.globalAlpha = Math.max(0, p.life / p.max)
-      ctx.fillStyle = p.color
-      ctx.fillRect(p.x, p.y, p.size, p.size)
+      if (p.streak) {
+        ctx.strokeStyle = p.color
+        ctx.lineWidth = p.size
+        ctx.beginPath()
+        ctx.moveTo(p.x, p.y)
+        ctx.lineTo(p.x - p.vx * 0.06, p.y - p.vy * 0.06)
+        ctx.stroke()
+      } else {
+        ctx.fillStyle = p.color
+        ctx.fillRect(p.x, p.y, p.size, p.size)
+      }
     }
     ctx.globalAlpha = 1
     ctx.globalCompositeOperation = 'source-over'
@@ -778,12 +832,15 @@ export class GameEngine {
     const hazard = r.boss || r.real?.hazardous
     ctx.fillStyle = r.flash > 0 ? '#fef3c7' : r.real ? '#57483a' : '#3f3b38'
     ctx.fill()
+    // Glow as a wide translucent stroke: shadowBlur is one of the most expensive
+    // canvas ops and tanked frame rate on software-rendered (GPU-less) browsers.
+    if (hazard) {
+      ctx.lineWidth = r.boss ? 10 : 6
+      ctx.strokeStyle = 'rgba(239,68,68,0.25)'
+      ctx.stroke()
+    }
     ctx.lineWidth = r.real ? 2 : 1
     ctx.strokeStyle = hazard ? '#f87171' : r.real ? '#fbbf24' : '#a8a29e'
-    if (hazard) {
-      ctx.shadowColor = '#ef4444'
-      ctx.shadowBlur = r.boss ? 24 : 12
-    }
     ctx.stroke()
     ctx.restore()
 

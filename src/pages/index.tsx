@@ -41,28 +41,26 @@ export default function Landing() {
           </nav>
         </header>
 
-        <main className="relative mx-auto flex max-w-3xl flex-col items-center px-4 pt-12 pb-[45vh] text-center sm:pt-20">
+        <main className="relative mx-auto flex max-w-3xl flex-col items-center px-4 pt-8 pb-[45vh] text-center sm:pt-12">
           <p className="rise text-xs font-semibold uppercase tracking-[0.3em] text-shield">An arcade game built on real NASA data</p>
-          <h1 className="rise mt-4 font-display text-5xl font-bold leading-[0.95] sm:text-7xl" style={{ animationDelay: '60ms' }}>
-            This week&rsquo;s asteroids
-            <br />
-            are <span className="text-primary">real</span>.
+          <h1 className="rise mt-4 font-display text-4xl font-bold leading-[0.95] sm:text-6xl" style={{ animationDelay: '60ms' }}>
+            This week&rsquo;s asteroids are <span className="text-primary">real</span>.
             <br />
             Shoot them anyway.
           </h1>
-          <p className="rise mt-5 max-w-xl text-base text-muted-foreground sm:text-lg" style={{ animationDelay: '120ms' }}>
+          <p className="rise mt-4 max-w-xl text-base text-muted-foreground" style={{ animationDelay: '120ms' }}>
             Every wave is built from the near-Earth objects NASA is tracking right now. Real solar flares knock out your
             shields. Mission control briefs you between waves. There&rsquo;s a new sky every day.
           </p>
           <Link
             to="/play"
             data-testid="landing-play"
-            className="rise pulse-ring mt-8 rounded-xl bg-primary px-9 py-4 font-display text-2xl font-bold text-primary-foreground transition-transform hover:-translate-y-0.5"
+            className="rise pulse-ring mt-6 rounded-xl bg-primary px-9 py-4 font-display text-2xl font-bold text-primary-foreground transition-transform hover:-translate-y-0.5"
             style={{ animationDelay: '180ms' }}
           >
             Play now. No sign-up.
           </Link>
-          <p className="mt-6 min-h-[1.25rem] text-sm text-muted-foreground" data-testid="landing-sky">
+          <p className="mt-4 min-h-[1.25rem] text-sm text-muted-foreground" data-testid="landing-sky">
             {sky?.live
               ? `Today: NASA is tracking ${sky.trackedCount} objects passing Earth this week.${boss ? ` Today's boss is ${boss.name} (${boss.diameterM} m).` : ''}`
               : ' '}

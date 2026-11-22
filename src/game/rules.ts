@@ -17,7 +17,7 @@ export const SCORE = {
 export const MAX_RUN_SCORE = (() => {
   let total = SCORE.boss + SCORE.victory(100)
   for (let w = 0; w < WAVE_COUNT; w++) {
-    total += SCORE.waveClear(w) + (12 + 5 * w) * SCORE.debris * 2 + 2 * 800
+    total += SCORE.waveClear(w) + (20 + 6 * w) * SCORE.debris * 2 + 2 * 800
   }
   // x1.5: the boss keeps spawning debris, so a long boss fight legitimately earns more.
   return Math.round(total * 1.5)

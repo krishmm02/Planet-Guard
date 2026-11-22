@@ -133,6 +133,8 @@ export function BriefingScreen({
     .filter((a): a is Asteroid => !!a)
   const ev = plan.event !== undefined ? sky.events[plan.event] : undefined
   const isBoss = waveIndex === WAVE_COUNT - 1
+  // Nothing to buy before the first wave, so don't show an all-disabled shop.
+  const showShop = waveIndex > 0
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -144,7 +146,7 @@ export function BriefingScreen({
 
   return (
     <div className="absolute inset-0 overflow-y-auto bg-black/40" data-testid="briefing">
-      <div className="mx-auto grid max-w-5xl gap-4 px-4 py-6 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <div className={cn('mx-auto grid gap-4 px-4 py-6', showShop ? 'max-w-5xl md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]' : 'max-w-xl')}>
         <section className="glass rise rounded-xl border border-border p-5">
           <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-shield">
             <span className="h-2 w-2 rounded-full bg-shield blink" /> Mission control {voiceOn ? '· on air' : ''}
@@ -186,7 +188,7 @@ export function BriefingScreen({
           </button>
         </section>
 
-        <section className="glass rise rounded-xl border border-border p-5" style={{ animationDelay: '80ms' }} data-testid="shop">
+        {showShop && <section className="glass rise rounded-xl border border-border p-5" style={{ animationDelay: '80ms' }} data-testid="shop">
           <div className="flex items-center justify-between">
             <p className="font-display text-lg font-bold">Hangar</p>
             <p className="font-display text-lg font-bold text-primary tabular-nums" data-testid="credits">
@@ -236,7 +238,7 @@ export function BriefingScreen({
               <span className="w-14 text-right text-sm font-semibold tabular-nums">{REPAIR.cost}</span>
             </button>
           </div>
-        </section>
+        </section>}
       </div>
     </div>
   )
@@ -268,7 +270,7 @@ export function HudBar({ hud, onNova }: { hud: Hud; onNova: () => void }) {
       {hud.event && (
         <div className="pointer-events-none absolute inset-x-0 top-20 flex justify-center">
           <div className="flex items-center gap-2 rounded-full border border-hazard/60 bg-hazard/20 px-4 py-1.5 text-sm font-semibold text-hazard blink">
-            <AlertTriangle className="h-4 w-4" /> {hud.event}: shields offline
+            <AlertTriangle className="h-4 w-4" /> {hud.event.label}: {hud.event.kind === 'flare' ? 'shields offline, controls sluggish' : 'plasma wave incoming'}
           </div>
         </div>
       )}

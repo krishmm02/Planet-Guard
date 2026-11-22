@@ -93,6 +93,8 @@ export default function PlayPage() {
       onRealKill: (a, points) => setRealKills((k) => [...k, { a, points }]),
     }, sfxRef.current)
     engineRef.current = engine
+    // Dev builds expose the engine for the e2e balance test (autopilot, fast-forward).
+    if (import.meta.env.DEV) (window as unknown as { __pg?: GameEngine }).__pg = engine
     return engine
   }, [])
 
