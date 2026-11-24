@@ -39,7 +39,7 @@ function lineText(sky: DailySky, line: string): string | null {
 const voiceInflight = new Map<string, Promise<string | null>>()
 
 async function getVoice(tools: ActionTools, sky: DailySky, line: string, text: string): Promise<string | null> {
-  const id = `${sky.day}:${line}`
+  const id = `${sky.day}:v${sky.v ?? 1}:${line}`
   const cached = await tools.get('briefing_audio', id)
   if (cached.success) {
     const audio = (cached.data as { record?: { data?: { audio?: string } } }).record?.data?.audio

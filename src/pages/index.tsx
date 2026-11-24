@@ -62,7 +62,7 @@ export default function Landing() {
           </Link>
           <p className="mt-4 min-h-[1.25rem] text-sm text-muted-foreground" data-testid="landing-sky">
             {sky?.live
-              ? `Today: NASA is tracking ${sky.trackedCount} objects passing Earth this week.${boss ? ` Today's boss is ${boss.name} (${boss.diameterM} m).` : ''}`
+              ? `Today: NASA is tracking ${sky.trackedCount} objects passing Earth this week.${boss ? ` Today's boss is ${boss.name} (about ${boss.diameterM.toLocaleString()} m across).` : ''}`
               : ' '}
           </p>
         </main>

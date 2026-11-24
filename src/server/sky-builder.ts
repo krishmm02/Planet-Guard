@@ -10,7 +10,7 @@
  */
 
 import type { ActionTools } from 'deepspace/worker'
-import { utcDay, WAVE_COUNT, type Asteroid, type DailySky, type SpaceEvent, type WavePlan } from '../game/sky'
+import { SKY_VERSION, utcDay, WAVE_COUNT, type Asteroid, type DailySky, type SpaceEvent, type WavePlan } from '../game/sky'
 
 const CLAUDE_MODEL = 'claude-sonnet-5-5'
 
@@ -54,6 +54,8 @@ export function parseNeoFeed(data: unknown): { asteroids: Asteroid[]; trackedCou
         // NASA wraps provisional designations in parens: "(2009 DC1)".
         name: String(n.name).replace(/^\((.*)\)$/, '$1').slice(0, 40),
         diameterM: Math.round((dmin + dmax) / 2),
+        diameterMinM: Math.round(dmin),
+        diameterMaxM: Math.round(dmax),
         speedKms: Math.round(num(ca.relative_velocity?.kilometers_per_second, 10) * 10) / 10,
         missLunar: Math.round(num(ca.miss_distance?.lunar, 50) * 10) / 10,
         approachDate: String(ca.close_approach_date ?? ''),
@@ -156,27 +158,72 @@ export function planCampaign(asteroids: Asteroid[], flares: SpaceEvent[], cmes: 
 // ─── Briefings (Claude) ─────────────────────────────────────────────────────
 
 const BRIEFING_SYSTEM = `You are MISSION CONTROL for "Planet Guard", an arcade game where the player orbits Earth in a defense ship and shoots down asteroids.
-Every asteroid and space-weather event you're given is REAL: it comes from NASA's feeds for this week. The game exaggerates them (they are not actually going to hit Earth), and you can wink at that.
+The data you're given is REAL, and every line must stay true to it:
+- The asteroids are NASA-tracked objects making their closest approach to Earth in the coming week. None of them will hit Earth; the game pretends they might, and you can wink at that.
+- Sizes are NASA estimates from brightness, given as a range. Always say "about" or "roughly" with a size. Never state a size as exact.
+- Space-weather events ALREADY HAPPENED on the date given (up to two weeks ago) and are over. Always talk about them in the past tense ("last week's M2.4 flare", "the CME recorded on November 15th"). The game replays them in that wave. Never say they are happening now or coming.
+- A lunar distance is 384,400 kilometers. Don't call a pass "close", "near" or "just" X lunar distances unless it is under 1 lunar distance.
+- Only use numbers that appear in the data, written as digits. You may round them. Don't invent facts, nicknames or comparisons.
 Voice: calm, dry, slightly funny NASA flight director over the radio. Second person ("Pilot,"). These lines are read aloud by a text-to-speech voice, so write plain spoken sentences: no emojis, no markdown, no lists. Spell out units ("meters", "kilometers per second").
-Each briefing: 2 short sentences, at most 38 words. Mention the named asteroids with one real stat each, and warn about the space-weather event if the wave has one. Escalate tension toward the boss wave.
+Each briefing: 2 short sentences, at most 38 words. Mention the named asteroids with one real stat each, and mention the space-weather event if the wave has one. Escalate tension toward the boss wave.
 Respond with ONLY JSON: {"intro": "...", "briefings": ["wave 1", ... exactly N strings], "victory": "...", "defeat": "..."}`
 
-function describeWave(w: WavePlan, byId: Map<string, Asteroid>, events: SpaceEvent[]): string {
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
+
+const sizeRange = (a: Asteroid) => (a.diameterMinM && a.diameterMaxM ? `${a.diameterMinM}-${a.diameterMaxM} m` : `${a.diameterM} m`)
+
+function describeWave(w: WavePlan, byId: Map<string, Asteroid>, events: SpaceEvent[], day: string): string {
   const rocks = [...w.headliners, ...(w.boss ? [w.boss] : [])]
     .map((id) => byId.get(id))
     .filter(Boolean)
-    .map((a) => `${a!.name} (${a!.diameterM} m wide, ${a!.speedKms} km/s, closest approach ${a!.approachDate} at ${a!.missLunar} lunar distances${a!.hazardous ? ', NASA-flagged potentially hazardous' : ''})`)
+    .map((a) => `${a!.name} (about ${a!.diameterM} m wide, NASA estimate ${sizeRange(a!)}; ${a!.speedKms} km/s; closest approach ${a!.approachDate} at ${a!.missLunar} lunar distances${a!.hazardous ? '; NASA-flagged potentially hazardous' : ''})`)
   const ev = w.event !== undefined ? events[w.event] : undefined
-  return `Wave ${w.index + 1}${w.boss ? ' (FINAL BOSS)' : ''}: ${rocks.join('; ') || 'debris field only'}${ev ? `. Space weather: ${ev.label} observed ${ev.date}.` : ''}`
+  const evText = ev ? `. Space weather (PAST event, replayed this wave): ${ev.label} recorded ${ev.date}, ${daysBetween(ev.date, day)} days before today` : ''
+  return `Wave ${w.index + 1}${w.boss ? ' (FINAL BOSS)' : ''}: ${rocks.join('; ') || 'debris field only'}${evText}.`
 }
 
 function templateBriefings(waves: WavePlan[], byId: Map<string, Asteroid>, events: SpaceEvent[]) {
   return waves.map((w) => {
     const first = byId.get(w.boss ?? w.headliners[0] ?? '')
     const ev = w.event !== undefined ? events[w.event] : undefined
-    const rock = first ? `Inbound: ${first.name}, ${first.diameterM} meters across at ${first.speedKms} kilometers per second.` : 'Debris field inbound.'
-    return `${w.boss ? 'Pilot, this is the big one. ' : `Wave ${w.index + 1}, pilot. `}${rock}${ev ? ` And a ${ev.label} is about to scramble your shields.` : ''}`
+    const rock = first ? `Inbound: ${first.name}, about ${first.diameterM} meters across at ${first.speedKms} kilometers per second.` : 'Debris field inbound.'
+    return `${w.boss ? 'Pilot, this is the big one. ' : `Wave ${w.index + 1}, pilot. `}${rock}${ev ? ` We're replaying the real ${ev.label} recorded on ${ev.date}, so expect your shields to suffer.` : ''}`
   })
+}
+
+const PAST_CUE = /\b(last|ago|earlier|recorded|observed|was|were|back on|replay\w*|on (january|february|march|april|may|june|july|august|september|october|november|december))\b/i
+
+/**
+ * Backstop for the prompt: Claude's lines are spoken as fact, so reject any
+ * line with a number that isn't in the source data (rounding allowed), or a
+ * space-weather mention with no past-tense cue. Returns why a line fails.
+ */
+export function briefingProblems(text: string, facts: number[], opts: { pastEvent?: boolean } = {}): string[] {
+  const problems: string[] = []
+  const found = text.replace(/(\d),(?=\d{3})/g, '$1').match(/\d+(?:\.\d+)?/g) ?? []
+  for (const s of found) {
+    const n = Number(s)
+    const ok = facts.some((v) => n === v || Math.abs(n - v) <= Math.max(0.5, Math.abs(v) * 0.06))
+    if (!ok) problems.push(`number ${s} is not in the data`)
+  }
+  if (opts.pastEvent && !PAST_CUE.test(text)) problems.push('space-weather event not described as past')
+  return problems
+}
+
+/** Every number a line about this wave (or, with w=null, the whole day) may contain. */
+export function waveFacts(w: WavePlan | null, byId: Map<string, Asteroid>, events: SpaceEvent[], day: string, extra: number[] = []): number[] {
+  const out = [...extra, WAVE_COUNT, 384400]
+  const rocks = w ? [...w.headliners, ...(w.boss ? [w.boss] : [])].map((id) => byId.get(id)).filter((a): a is Asteroid => !!a) : [...byId.values()]
+  for (const a of rocks) {
+    out.push(a.diameterM, a.speedKms, a.missLunar)
+    if (a.diameterMinM) out.push(a.diameterMinM)
+    if (a.diameterMaxM) out.push(a.diameterMaxM)
+    out.push(...(a.name.match(/\d+/g) ?? []).map(Number), ...a.approachDate.split('-').map(Number))
+  }
+  const evs = w ? (w.event !== undefined ? [events[w.event]] : []) : events
+  for (const e of evs.filter(Boolean)) out.push(...(e.label.match(/\d+(?:\.\d+)?/g) ?? []).map(Number), ...e.date.split('-').map(Number), daysBetween(e.date, day))
+  if (w) out.push(w.index + 1)
+  return out
 }
 
 function extractText(data: unknown): string {
@@ -186,7 +233,7 @@ function extractText(data: unknown): string {
 
 const clip = (s: unknown, max: number) => (typeof s === 'string' ? s.trim().slice(0, max) : '')
 
-async function writeBriefings(tools: ActionTools, waves: WavePlan[], byId: Map<string, Asteroid>, events: SpaceEvent[]) {
+async function writeBriefings(tools: ActionTools, waves: WavePlan[], byId: Map<string, Asteroid>, events: SpaceEvent[], day: string, trackedCount: number) {
   const fallback = {
     intro: "Pilot, this is Mission Control. These are this week's real near-Earth objects, slightly more hostile than NASA says. Keep them off the planet.",
     briefings: templateBriefings(waves, byId, events),
@@ -200,7 +247,7 @@ async function writeBriefings(tools: ActionTools, waves: WavePlan[], byId: Map<s
     thinking: { type: 'disabled' },
     temperature: 0.9,
     system: BRIEFING_SYSTEM.replace('exactly N strings', `exactly ${waves.length} strings`),
-    messages: [{ role: 'user', content: waves.map((w) => describeWave(w, byId, events)).join('\n') }],
+    messages: [{ role: 'user', content: waves.map((w) => describeWave(w, byId, events, day)).join('\n') }],
   })
   if (!res.success) {
     console.warn(`[sky] briefing generation failed: ${res.error}`)
@@ -210,15 +257,22 @@ async function writeBriefings(tools: ActionTools, waves: WavePlan[], byId: Map<s
     const text = extractText(res.data)
     const j = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) as Record<string, unknown>
     const briefings = Array.isArray(j.briefings) ? j.briefings.map((b) => clip(b, 320)) : []
+    // Any missing, empty or ungrounded line falls back to the template for that line.
+    const all = waveFacts(null, byId, events, day, [trackedCount])
+    const checked = (line: string, fb: string, facts: number[], label: string, pastEvent = false) => {
+      if (!line) return fb
+      const problems = briefingProblems(line, facts, { pastEvent })
+      if (problems.length) console.warn(`[sky] ${label} rejected (${problems.join('; ')}): ${line}`)
+      return problems.length ? fb : line
+    }
     return {
-      intro: clip(j.intro, 320) || fallback.intro,
-      // Any missing/empty line falls back to the template for that wave.
-      briefings: waves.map((_, i) => briefings[i] || fallback.briefings[i]),
-      victory: clip(j.victory, 320) || fallback.victory,
-      defeat: clip(j.defeat, 320) || fallback.defeat,
+      intro: checked(clip(j.intro, 320), fallback.intro, all, 'intro'),
+      briefings: waves.map((w, i) => checked(briefings[i] ?? '', fallback.briefings[i], waveFacts(w, byId, events, day), `wave ${i + 1}`, w.event !== undefined)),
+      victory: checked(clip(j.victory, 320), fallback.victory, all, 'victory'),
+      defeat: checked(clip(j.defeat, 320), fallback.defeat, all, 'defeat'),
     }
   } catch {
-    console.warn('[sky] briefing JSON unparseable; using templates')
+    console.warn('[sky] briefing JSON unparseable; using templates. Reply began: ' + extractText(res.data).slice(0, 400))
     return fallback
   }
 }
@@ -252,7 +306,9 @@ async function readCached(tools: ActionTools, day: string): Promise<DailySky | n
   if (!got.success) return null
   const payload = (got.data as { record?: { data?: { payload?: unknown } } }).record?.data?.payload
   if (!payload) return null
-  return (typeof payload === 'string' ? JSON.parse(payload) : payload) as DailySky
+  const sky = (typeof payload === 'string' ? JSON.parse(payload) : payload) as DailySky
+  // A build from an older version of the briefing rules is rebuilt, not served.
+  return sky.v === SKY_VERSION ? sky : null
 }
 
 export async function buildDailySky(tools: ActionTools, day = utcDay()): Promise<DailySky> {
@@ -277,8 +333,8 @@ export async function buildDailySky(tools: ActionTools, day = utcDay()): Promise
   }
 
   const byId = new Map(base.asteroids.map((a) => [a.id, a]))
-  const words = await writeBriefings(tools, base.waves, byId, base.events)
-  const sky: DailySky = { ...base, ...words, generatedAt: Date.now() }
+  const words = await writeBriefings(tools, base.waves, byId, base.events, day, base.trackedCount)
+  const sky: DailySky = { ...base, ...words, generatedAt: Date.now(), v: SKY_VERSION }
 
   // Only cache a live sky; a practice sky is retried on the next request window.
   if (sky.live) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseCmes, parseFlares, parseNeoFeed, planCampaign } from './sky-builder'
+import { briefingProblems, parseCmes, parseFlares, parseNeoFeed, planCampaign, waveFacts } from './sky-builder'
 import { signRun, verifyRun } from './run-token'
 import { checkScore } from '../actions/index'
 import { MAX_RUN_SCORE } from '../game/rules'
@@ -115,5 +115,33 @@ describe('run tokens', () => {
   })
   it('fails closed without a secret', async () => {
     await expect(signRun(undefined, { day: 'd', startedAt: 1, nonce: 'n' })).rejects.toThrow(/RUN_KEY/)
+  })
+})
+
+describe('briefing grounding (lines are spoken as fact)', () => {
+  // Real data from the 2026-11-24 sky, wave 4.
+  const rj43: Asteroid = { id: 'a', name: '2010 RJ43', diameterM: 78, diameterMinM: 48, diameterMaxM: 108, speedKms: 17.1, missLunar: 53.2, approachDate: '2026-11-27', hazardous: false, jplUrl: '' }
+  const wp19: Asteroid = { id: 'b', name: '612197 (2000 WP19)', diameterM: 112, diameterMinM: 69, diameterMaxM: 154, speedKms: 21.6, missLunar: 161.3, approachDate: '2026-11-26', hazardous: false, jplUrl: '' }
+  const byId = new Map([[rj43.id, rj43], [wp19.id, wp19]])
+  const events = [{ kind: 'flare' as const, label: 'M2.4 solar flare', date: '2026-11-19', intensity: 0.7, link: '' }]
+  const wave = { index: 3, headliners: ['a', 'b'], event: 0 }
+  const facts = waveFacts(wave, byId, events, '2026-11-24')
+
+  it('rejects the live line that called a 5-day-old flare current', () => {
+    const live = 'Pilot, wave four, and an M2.4 solar flare is flickering on the radar. 2010 RJ43 is 78 meters wide, and 612197 is 112 meters wide at 21.6 kilometers per second.'
+    expect(briefingProblems(live, facts, { pastEvent: true })).toEqual(['space-weather event not described as past'])
+  })
+  it('accepts a past-tense line with real (rounded) numbers', () => {
+    const good = "Pilot, wave 4. We're replaying last week's M2.4 flare, and 2010 RJ43, about 80 meters wide, is coming in at 17 kilometers per second."
+    expect(briefingProblems(good, facts, { pastEvent: true })).toEqual([])
+  })
+  it('rejects invented numbers', () => {
+    expect(briefingProblems('2010 RJ43 is about 300 meters wide at 40 kilometers per second.', facts)).toEqual(['number 300 is not in the data', 'number 40 is not in the data'])
+  })
+  it('handles thousands separators', () => {
+    const lugh: Asteroid = { id: 'L', name: '217628 Lugh (1990 HA)', diameterM: 1984, diameterMinM: 1226, diameterMaxM: 2742, speedKms: 17.7, missLunar: 27.5, approachDate: '2026-11-28', hazardous: true, jplUrl: '' }
+    const f = waveFacts({ index: 7, headliners: [], boss: 'L' }, new Map([['L', lugh]]), [], '2026-11-24')
+    expect(briefingProblems('217628 Lugh is roughly 1,984 meters wide and passes 27.5 lunar distances out.', f)).toEqual([])
+    expect(briefingProblems('Lugh is 5,000 meters wide.', f)).toEqual(['number 5000 is not in the data'])
   })
 })

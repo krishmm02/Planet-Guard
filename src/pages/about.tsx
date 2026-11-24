@@ -8,7 +8,7 @@ const ROWS = [
   {
     tag: 'nasa/neo-feed · nasa/flr · nasa/cme',
     title: 'Real asteroids, real solar storms',
-    body: "Once a day the server pulls the near-Earth objects NASA is tracking for the coming week, plus the last two weeks of solar flares and coronal mass ejections. The week's objects are spread across 8 waves by size, and the biggest \"potentially hazardous\" one becomes the final boss. A flare's class (C, M, X) sets how hard it blacks out your shields, and a CME's speed sets how hard it shoves the asteroids.",
+    body: "Once a day the server pulls the near-Earth objects NASA is tracking for the coming week, plus the last two weeks of solar flares and coronal mass ejections. The week's objects are spread across 8 waves by size, and the biggest \"potentially hazardous\" one becomes the final boss. A flare's class (C, M, X) sets how hard it blacks out your shields, and a CME's speed sets how hard it shoves the asteroids. Those storms already happened; the game replays them, and the briefings say when they were recorded.",
   },
   {
     tag: 'anthropic/chat-completion',
@@ -23,7 +23,7 @@ const ROWS = [
   {
     tag: 'DeepSpace: cron · records · server actions · auth',
     title: 'Built once a day, played instantly',
-    body: "A cron job builds tomorrow's sky just after midnight UTC, so nobody waits on an API. The game itself runs entirely in your browser. Playing needs no account; signing in only posts your score to the live daily leaderboard. Scores are checked against a server-signed start time so impossible runs are rejected.",
+    body: "A cron job builds each new day's sky just after midnight UTC, so nobody waits on an API. The game itself runs entirely in your browser. Playing needs no account; signing in only posts your score to the live daily leaderboard. Scores are checked against a server-signed start time so impossible runs are rejected.",
   },
 ]
 

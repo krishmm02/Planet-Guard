@@ -10,7 +10,10 @@
 export interface Asteroid {
   id: string
   name: string
+  /** Midpoint of NASA's estimate; sizes come from brightness, so it is a range. */
   diameterM: number
+  diameterMinM?: number
+  diameterMaxM?: number
   speedKms: number
   missLunar: number
   approachDate: string
@@ -52,7 +55,11 @@ export interface DailySky {
   victory: string
   defeat: string
   generatedAt: number
+  /** Bumped when the build changes in a way that should replace a cached day. */
+  v?: number
 }
+
+export const SKY_VERSION = 3
 
 export const WAVE_COUNT = 8
 

@@ -135,7 +135,7 @@ export function GameOver({
               <ul className="mt-2 flex flex-wrap gap-1.5">
                 {realKills.map(({ a, points }) => (
                   <li key={a.id} className={cn('rounded-full border px-2.5 py-1 text-xs', a.hazardous ? 'border-hazard/50 text-hazard' : 'border-border')}>
-                    {a.name} · {a.diameterM} m <span className="text-muted-foreground">+{points}</span>
+                    {a.name} · ~{a.diameterM} m <span className="text-muted-foreground">+{points}</span>
                   </li>
                 ))}
               </ul>

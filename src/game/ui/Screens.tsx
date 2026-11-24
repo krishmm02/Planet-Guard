@@ -36,7 +36,7 @@ function AsteroidCard({ a, boss, isNew }: { a: Asteroid; boss?: boolean; isNew?:
         </span>
       </div>
       <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-        <div><dt className="text-muted-foreground">Size</dt><dd className="font-semibold">{a.diameterM} m</dd></div>
+        <div><dt className="text-muted-foreground">Size</dt><dd className="font-semibold" title={a.diameterMinM ? `NASA estimate: ${a.diameterMinM}–${a.diameterMaxM} m` : undefined}>~{a.diameterM} m</dd></div>
         <div><dt className="text-muted-foreground">Speed</dt><dd className="font-semibold">{a.speedKms} km/s</dd></div>
         <div><dt className="text-muted-foreground">Closest</dt><dd className="font-semibold">{a.missLunar} LD</dd></div>
       </dl>
@@ -126,7 +126,7 @@ export function LogbookModal({ book, onClose }: { book: Logbook; onClose: () => 
                     {e.boss && <span className="rounded bg-hazard/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-hazard">Boss</span>}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {e.diameterM} m · {e.speedKms} km/s · logged {e.day}
+                    ~{e.diameterM} m · {e.speedKms} km/s · logged {e.day}
                     {e.jplUrl && (
                       <a href={e.jplUrl} target="_blank" rel="noreferrer" className="ml-1 hover:text-primary">· JPL ↗</a>
                     )}
@@ -172,7 +172,7 @@ export function TitleScreen({ sky, book, onLaunch, onOpenLog }: { sky: DailySky 
               </div>
               <div className="rounded-lg border border-hazard/40 bg-card/70 p-3">
                 <p className="truncate font-display text-sm font-bold text-hazard">{boss?.name ?? '???'}</p>
-                <p className="text-[11px] text-muted-foreground">today&rsquo;s boss{boss ? ` · ${boss.diameterM} m` : ''}</p>
+                <p className="text-[11px] text-muted-foreground">today&rsquo;s boss{boss ? ` · ~${boss.diameterM} m` : ''}</p>
               </div>
             </div>
           )}
@@ -396,7 +396,7 @@ export function HudBar({ hud, onNova }: { hud: Hud; onNova: () => void }) {
       <div className="pointer-events-none absolute inset-x-0 top-24 flex flex-col items-center gap-2">
         {hud.event && (
           <div className="flex items-center gap-2 rounded-full border border-hazard/60 bg-hazard/20 px-4 py-1.5 text-sm font-semibold text-hazard blink">
-            <AlertTriangle className="h-4 w-4" /> {hud.event.label}: {hud.event.kind === 'flare' ? 'shields offline, aim scrambled' : 'plasma wave incoming'}
+            <AlertTriangle className="h-4 w-4" /> {hud.event.label} replay: {hud.event.kind === 'flare' ? 'shields offline, aim scrambled' : 'plasma wave hitting'}
           </div>
         )}
         <div className="flex gap-2">
